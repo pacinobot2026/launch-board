@@ -45,29 +45,6 @@ export default function LaunchDetail() {
     }));
   };
 
-  const toggleChecklistItem = (sectionId, taskId, checklistIdx, itemIdx) => {
-    setLaunch(prev => ({
-      ...prev,
-      sections: prev.sections.map(section => {
-        if (section.id === sectionId) {
-          return {
-            ...section,
-            tasks: section.tasks.map(task => {
-              if (task.id === taskId) {
-                const newChecklists = [...task.checklists];
-                newChecklists[checklistIdx].items[itemIdx].completed = 
-                  !newChecklists[checklistIdx].items[itemIdx].completed;
-                return { ...task, checklists: newChecklists };
-              }
-              return task;
-            })
-          };
-        }
-        return section;
-      })
-    }));
-  };
-
   const calculateSectionProgress = (section) => {
     if (!section.tasks || section.tasks.length === 0) return 0;
     const completed = section.tasks.filter(t => t.status === 'completed').length;
@@ -244,7 +221,7 @@ export default function LaunchDetail() {
                             }`}
                           >
                             {/* Task Header */}
-                            <div className="flex items-start gap-3 mb-2">
+                            <div className="flex items-start gap-3">
                               <input
                                 type="checkbox"
                                 checked={task.status === 'completed'}
@@ -260,26 +237,6 @@ export default function LaunchDetail() {
                                 )}
                               </div>
                             </div>
-
-                            {/* Checklists */}
-                            {task.checklists?.map((checklist, checklistIdx) => (
-                              <div key={checklistIdx} className="mt-3 ml-8 space-y-1">
-                                <p className="text-xs font-medium text-gray-400 mb-1">{checklist.name}</p>
-                                {checklist.items?.map((item, itemIdx) => (
-                                  <div key={itemIdx} className="flex items-center gap-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={item.completed}
-                                      onChange={() => toggleChecklistItem(section.id, task.id, checklistIdx, itemIdx)}
-                                      className="w-4 h-4 rounded border-gray-600 text-green-500 focus:ring-green-500 focus:ring-offset-gray-900 cursor-pointer"
-                                    />
-                                    <span className={`text-sm ${item.completed ? 'line-through text-gray-500' : 'text-gray-300'}`}>
-                                      {item.name}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            ))}
 
                             {/* Task URL */}
                             {task.url && (
@@ -340,25 +297,6 @@ export default function LaunchDetail() {
                             {task.description && (
                               <p className="text-gray-400 mt-1">{task.description}</p>
                             )}
-                            
-                            {task.checklists?.map((checklist, checklistIdx) => (
-                              <div key={checklistIdx} className="mt-3 space-y-1">
-                                <p className="text-sm font-medium text-gray-400">{checklist.name}</p>
-                                {checklist.items?.map((item, itemIdx) => (
-                                  <div key={itemIdx} className="flex items-center gap-2 ml-4">
-                                    <input
-                                      type="checkbox"
-                                      checked={item.completed}
-                                      onChange={() => toggleChecklistItem(section.id, task.id, checklistIdx, itemIdx)}
-                                      className="w-4 h-4 rounded border-gray-600 text-green-500 cursor-pointer"
-                                    />
-                                    <span className={`text-sm ${item.completed ? 'line-through text-gray-500' : 'text-gray-300'}`}>
-                                      {item.name}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            ))}
                           </div>
                         </div>
                       </div>
