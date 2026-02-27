@@ -7,7 +7,7 @@ export default function LaunchDetail() {
   const { id } = router.query;
   const [launch, setLaunch] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState('board'); // board, list, timeline
+  const [view, setView] = useState('board');
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
@@ -214,41 +214,48 @@ export default function LaunchDetail() {
                         {section.tasks?.map(task => (
                           <div 
                             key={task.id} 
-                            className={`bg-gray-900/50 border rounded-lg p-4 hover:border-blue-500/50 transition-all ${
+                            className={`bg-gray-900/50 border rounded-lg p-4 hover:border-blue-500/50 transition-all h-32 flex flex-col ${
                               task.status === 'completed' 
                                 ? 'border-green-500/30 bg-green-900/10' 
                                 : 'border-gray-700'
                             }`}
                           >
                             {/* Task Header */}
-                            <div className="flex items-start gap-3">
+                            <div className="flex items-start gap-3 flex-1">
                               <input
                                 type="checkbox"
                                 checked={task.status === 'completed'}
                                 onChange={() => toggleTaskComplete(section.id, task.id)}
-                                className="mt-1 w-5 h-5 rounded border-gray-600 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-900 cursor-pointer"
+                                className="mt-1 w-5 h-5 flex-shrink-0 rounded border-gray-600 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-900 cursor-pointer"
                               />
-                              <div className="flex-1">
-                                <h4 className={`font-semibold ${task.status === 'completed' ? 'line-through text-gray-500' : ''}`}>
+                              <div className="flex-1 overflow-hidden">
+                                <h4 className={`font-semibold line-clamp-2 ${task.status === 'completed' ? 'line-through text-gray-500' : ''}`}>
                                   {task.name}
                                 </h4>
                                 {task.description && (
-                                  <p className="text-sm text-gray-400 mt-1">{task.description.substring(0, 100)}{task.description.length > 100 ? '...' : ''}</p>
+                                  <p className="text-xs text-gray-400 mt-1 line-clamp-2">{task.description}</p>
                                 )}
                               </div>
                             </div>
 
-                            {/* Task URL */}
-                            {task.url && (
-                              <a 
-                                href={task.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-xs text-blue-400 hover:text-blue-300 mt-2 inline-block"
-                              >
-                                🔗 View in Trello
-                              </a>
-                            )}
+                            {/* Task Footer - Icons */}
+                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-700/50">
+                              {task.url && (
+                                <a 
+                                  href={task.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-blue-400 hover:text-blue-300 transition-colors"
+                                  title="View in Trello"
+                                >
+                                  🔗
+                                </a>
+                              )}
+                              {/* Priority indicator - placeholder for now */}
+                              <div className="ml-auto flex gap-1">
+                                <span className="w-2 h-2 rounded-full bg-gray-600" title="Priority"></span>
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -297,6 +304,16 @@ export default function LaunchDetail() {
                             {task.description && (
                               <p className="text-gray-400 mt-1">{task.description}</p>
                             )}
+                            {task.url && (
+                              <a 
+                                href={task.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-flex items-center gap-1"
+                              >
+                                🔗 View in Trello
+                              </a>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -323,6 +340,12 @@ export default function LaunchDetail() {
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: rgba(96, 165, 250, 0.7);
+        }
+        .line-clamp-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
         }
       `}</style>
     </div>
