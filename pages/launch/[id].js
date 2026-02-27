@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 export default function LaunchDetail() {
   const router = useRouter();
@@ -9,6 +10,7 @@ export default function LaunchDetail() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('board');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTask, setSelectedTask] = useState(null);
 
   useEffect(() => {
     if (!id) return;
@@ -21,6 +23,28 @@ export default function LaunchDetail() {
         setLoading(false);
       });
   }, [id]);
+
+  const onDragEnd = (result) => {
+    const { source, destination, draggableId } = result;
+
+    // Dropped outside a droppable area
+    if (!destination) return;
+
+    // Dropped in same position
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
+
+    // Move task between sections
+    setLaunch(prev => {
+      const newSections = [...prev.sections];
+      const sourceSection = newSections.find(s => s.id === source.droppableId);
+      const destSection = newSections.find(s => s.id === destination.droppableId);
+      
+      const [movedTask] = sourceSection.tasks.splice(source.index, 1);
+      destSection.tasks.splice(destination.index, 0, movedTask);
+      
+      return { ...prev, sections: newSections };
+    });
+  };
 
   const toggleTaskComplete = (sectionId, taskId) => {
     setLaunch(prev => ({
@@ -45,10 +69,59 @@ export default function LaunchDetail() {
     }));
   };
 
+  const toggleChecklistItem = (sectionId, taskId, checklistIdx, itemIdx) => {
+    setLaunch(prev => ({
+      ...prev,
+      sections: prev.sections.map(section => {
+        if (section.id === sectionId) {
+          return {
+            ...section,
+            tasks: section.tasks.map(task => {
+              if (task.id === taskId) {
+                const newChecklists = [...task.checklists];
+                newChecklists[checklistIdx].items[itemIdx].completed = 
+                  !newChecklists[checklistIdx].items[itemIdx].completed;
+                return { ...task, checklists: newChecklists };
+              }
+              return task;
+            })
+          };
+        }
+        return section;
+      })
+    }));
+    
+    // Update selectedTask if modal is open
+    if (selectedTask?.id === taskId) {
+      const updatedTask = launch.sections
+        .find(s => s.id === sectionId)?.tasks
+        .find(t => t.id === taskId);
+      if (updatedTask) {
+        const newChecklists = [...updatedTask.checklists];
+        newChecklists[checklistIdx].items[itemIdx].completed = 
+          !newChecklists[checklistIdx].items[itemIdx].completed;
+        setSelectedTask({ ...updatedTask, checklists: newChecklists });
+      }
+    }
+  };
+
   const calculateSectionProgress = (section) => {
     if (!section.tasks || section.tasks.length === 0) return 0;
     const completed = section.tasks.filter(t => t.status === 'completed').length;
     return Math.round((completed / section.tasks.length) * 100);
+  };
+
+  const calculateChecklistProgress = (task) => {
+    if (!task.checklists || task.checklists.length === 0) return 0;
+    let total = 0;
+    let completed = 0;
+    task.checklists.forEach(checklist => {
+      checklist.items?.forEach(item => {
+        total++;
+        if (item.completed) completed++;
+      });
+    });
+    return total > 0 ? Math.round((completed / total) * 100) : 0;
   };
 
   const calculateOverallProgress = () => {
@@ -79,7 +152,7 @@ export default function LaunchDetail() {
         <div className="text-center relative z-10">
           <div className="relative">
             <div className="absolute inset-0 blur-3xl bg-gradient-to-r from-blue-500 to-purple-500 opacity-20 rounded-full"></div>
-            <div className="animate-spin rounded-full h-20 w-20 border-4 border-transparent bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-border mx-auto mb-6" style={{ maskImage: 'linear-gradient(transparent 50%, black 50%)', WebkitMaskImage: 'linear-gradient(transparent 50%, black 50%)' }}></div>
+            <div className="animate-spin rounded-full h-20 w-20 border-4 border-transparent bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-border mx-auto mb-6"></div>
           </div>
           <div className="text-white text-xl font-semibold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Loading Launch...</div>
         </div>
@@ -99,6 +172,11 @@ export default function LaunchDetail() {
   const totalTasks = launch.sections?.reduce((sum, s) => sum + (s.tasks?.length || 0), 0) || 0;
   const completedTasks = launch.sections?.reduce((sum, s) => 
     sum + (s.tasks?.filter(t => t.status === 'completed').length || 0), 0) || 0;
+
+  // Get section ID for selected task
+  const getTaskSection = (taskId) => {
+    return launch.sections?.find(s => s.tasks?.some(t => t.id === taskId));
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 text-white relative overflow-hidden">
@@ -208,97 +286,129 @@ export default function LaunchDetail() {
           </div>
         </div>
 
-        {/* Board View */}
+        {/* Board View with Drag & Drop */}
         {view === 'board' && (
-          <div className="overflow-x-auto pb-4">
-            <div className="flex gap-5" style={{ minWidth: 'min-content' }}>
-              {(searchTerm ? filteredSections : launch.sections)?.map(section => {
-                const progress = calculateSectionProgress(section);
-                const taskCount = section.tasks?.length || 0;
-                const completedCount = section.tasks?.filter(t => t.status === 'completed').length || 0;
-                
-                return (
-                  <div key={section.id} className="flex-shrink-0 w-80">
-                    <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 h-full shadow-2xl">
-                      {/* Section Header */}
-                      <div className="mb-5">
-                        <h3 className="text-lg font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">{section.name}</h3>
-                        <div className="flex items-center justify-between text-sm text-gray-400 mb-3">
-                          <span className="font-medium">{completedCount}/{taskCount} tasks</span>
-                          <span className="font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">{progress}%</span>
+          <DragDropContext onDragEnd={onDragEnd}>
+            <div className="overflow-x-auto pb-4">
+              <div className="flex gap-5" style={{ minWidth: 'min-content' }}>
+                {(searchTerm ? filteredSections : launch.sections)?.map(section => {
+                  const progress = calculateSectionProgress(section);
+                  const taskCount = section.tasks?.length || 0;
+                  const completedCount = section.tasks?.filter(t => t.status === 'completed').length || 0;
+                  
+                  return (
+                    <div key={section.id} className="flex-shrink-0 w-80">
+                      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 h-full shadow-2xl">
+                        {/* Section Header */}
+                        <div className="mb-5">
+                          <h3 className="text-lg font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">{section.name}</h3>
+                          <div className="flex items-center justify-between text-sm text-gray-400 mb-3">
+                            <span className="font-medium">{completedCount}/{taskCount} tasks</span>
+                            <span className="font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">{progress}%</span>
+                          </div>
+                          <div className="relative">
+                            <div className="w-full bg-white/5 rounded-full h-2.5 overflow-hidden border border-white/10">
+                              <div 
+                                className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500 relative overflow-hidden"
+                                style={{ width: `${progress}%` }}
+                              >
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="relative">
-                          <div className="w-full bg-white/5 rounded-full h-2.5 overflow-hidden border border-white/10">
-                            <div 
-                              className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500 relative overflow-hidden"
-                              style={{ width: `${progress}%` }}
+
+                        {/* Tasks - Droppable */}
+                        <Droppable droppableId={section.id}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.droppableProps}
+                              className={`space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar ${
+                                snapshot.isDraggingOver ? 'bg-blue-500/5 rounded-xl' : ''
+                              }`}
                             >
-                              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                              {section.tasks?.map((task, index) => (
+                                <Draggable key={task.id} draggableId={task.id} index={index}>
+                                  {(provided, snapshot) => (
+                                    <div
+                                      ref={provided.innerRef}
+                                      {...provided.draggableProps}
+                                      {...provided.dragHandleProps}
+                                      onClick={() => setSelectedTask(task)}
+                                      className={`group relative rounded-xl p-4 h-32 flex flex-col transition-all duration-300 hover:scale-[1.02] cursor-pointer ${
+                                        snapshot.isDragging 
+                                          ? 'shadow-2xl ring-2 ring-purple-500 scale-105 rotate-2' 
+                                          : task.status === 'completed' 
+                                            ? 'bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/30' 
+                                            : 'bg-gradient-to-br from-white/5 to-white/10 border border-white/10 hover:border-purple-500/50'
+                                      }`}
+                                    >
+                                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-purple-500/0 to-pink-500/0 group-hover:from-blue-500/5 group-hover:via-purple-500/5 group-hover:to-pink-500/5 rounded-xl transition-all duration-300"></div>
+                                      
+                                      {/* Task Header */}
+                                      <div className="flex items-start gap-3 flex-1 relative z-10">
+                                        <div className="relative">
+                                          <input
+                                            type="checkbox"
+                                            checked={task.status === 'completed'}
+                                            onChange={(e) => {
+                                              e.stopPropagation();
+                                              toggleTaskComplete(section.id, task.id);
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="mt-1 w-5 h-5 flex-shrink-0 rounded-md border-2 border-white/20 bg-white/5 checked:bg-gradient-to-r checked:from-blue-500 checked:to-purple-500 cursor-pointer transition-all"
+                                          />
+                                        </div>
+                                        <div className="flex-1 overflow-hidden">
+                                          <h4 className={`font-semibold line-clamp-2 text-sm leading-snug ${task.status === 'completed' ? 'line-through text-gray-500' : 'text-white'}`}>
+                                            {task.name}
+                                          </h4>
+                                          {task.description && (
+                                            <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">{task.description}</p>
+                                          )}
+                                        </div>
+                                      </div>
 
-                      {/* Tasks */}
-                      <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-                        {section.tasks?.map(task => (
-                          <div 
-                            key={task.id} 
-                            className={`group relative rounded-xl p-4 h-32 flex flex-col transition-all duration-300 hover:scale-[1.02] cursor-pointer ${
-                              task.status === 'completed' 
-                                ? 'bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/30' 
-                                : 'bg-gradient-to-br from-white/5 to-white/10 border border-white/10 hover:border-purple-500/50'
-                            }`}
-                          >
-                            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-purple-500/0 to-pink-500/0 group-hover:from-blue-500/5 group-hover:via-purple-500/5 group-hover:to-pink-500/5 rounded-xl transition-all duration-300"></div>
-                            
-                            {/* Task Header */}
-                            <div className="flex items-start gap-3 flex-1 relative z-10">
-                              <div className="relative">
-                                <input
-                                  type="checkbox"
-                                  checked={task.status === 'completed'}
-                                  onChange={() => toggleTaskComplete(section.id, task.id)}
-                                  className="mt-1 w-5 h-5 flex-shrink-0 rounded-md border-2 border-white/20 bg-white/5 checked:bg-gradient-to-r checked:from-blue-500 checked:to-purple-500 cursor-pointer transition-all"
-                                />
-                              </div>
-                              <div className="flex-1 overflow-hidden">
-                                <h4 className={`font-semibold line-clamp-2 text-sm leading-snug ${task.status === 'completed' ? 'line-through text-gray-500' : 'text-white'}`}>
-                                  {task.name}
-                                </h4>
-                                {task.description && (
-                                  <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">{task.description}</p>
-                                )}
-                              </div>
+                                      {/* Task Footer */}
+                                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5 relative z-10">
+                                        {task.url && (
+                                          <a 
+                                            href={task.url} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="flex items-center justify-center w-7 h-7 rounded-lg bg-white/5 hover:bg-blue-500/20 border border-white/10 hover:border-blue-500/50 transition-all group/icon"
+                                            title="View in Trello"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <span className="text-sm group-hover/icon:scale-110 transition-transform">🔗</span>
+                                          </a>
+                                        )}
+                                        {task.checklists && task.checklists.length > 0 && (
+                                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/5 border border-white/10">
+                                            <span className="text-xs">✓</span>
+                                            <span className="text-xs font-medium">{calculateChecklistProgress(task)}%</span>
+                                          </div>
+                                        )}
+                                        <div className="ml-auto flex items-center gap-1.5">
+                                          <div className="w-2 h-2 rounded-full bg-gradient-to-r from-blue-400 to-purple-400 shadow-lg shadow-blue-500/50" title="Priority"></div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </Draggable>
+                              ))}
+                              {provided.placeholder}
                             </div>
-
-                            {/* Task Footer */}
-                            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5 relative z-10">
-                              {task.url && (
-                                <a 
-                                  href={task.url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="flex items-center justify-center w-7 h-7 rounded-lg bg-white/5 hover:bg-blue-500/20 border border-white/10 hover:border-blue-500/50 transition-all group/icon"
-                                  title="View in Trello"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <span className="text-sm group-hover/icon:scale-110 transition-transform">🔗</span>
-                                </a>
-                              )}
-                              <div className="ml-auto flex items-center gap-1.5">
-                                <div className="w-2 h-2 rounded-full bg-gradient-to-r from-blue-400 to-purple-400 shadow-lg shadow-blue-500/50" title="Priority"></div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
+                          )}
+                        </Droppable>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          </DragDropContext>
         )}
 
         {/* List View */}
@@ -318,7 +428,8 @@ export default function LaunchDetail() {
                     {section.tasks?.map(task => (
                       <div 
                         key={task.id}
-                        className={`group rounded-xl p-4 transition-all hover:scale-[1.01] ${
+                        onClick={() => setSelectedTask(task)}
+                        className={`group rounded-xl p-4 transition-all hover:scale-[1.01] cursor-pointer ${
                           task.status === 'completed' 
                             ? 'bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/30' 
                             : 'bg-gradient-to-br from-white/5 to-white/10 border border-white/10 hover:border-purple-500/50'
@@ -328,7 +439,12 @@ export default function LaunchDetail() {
                           <input
                             type="checkbox"
                             checked={task.status === 'completed'}
-                            onChange={() => toggleTaskComplete(section.id, task.id)}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              const sectionId = getTaskSection(task.id)?.id;
+                              if (sectionId) toggleTaskComplete(sectionId, task.id);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
                             className="mt-1 w-5 h-5 rounded-md border-2 border-white/20 bg-white/5 checked:bg-gradient-to-r checked:from-blue-500 checked:to-purple-500 cursor-pointer"
                           />
                           <div className="flex-1">
@@ -338,17 +454,25 @@ export default function LaunchDetail() {
                             {task.description && (
                               <p className="text-gray-400 text-sm leading-relaxed">{task.description}</p>
                             )}
-                            {task.url && (
-                              <a 
-                                href={task.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 text-sm mt-2 transition-colors"
-                              >
-                                <span>🔗</span>
-                                <span>View in Trello</span>
-                              </a>
-                            )}
+                            <div className="flex items-center gap-3 mt-2">
+                              {task.url && (
+                                <a 
+                                  href={task.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 text-sm transition-colors"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <span>🔗</span>
+                                  <span>View in Trello</span>
+                                </a>
+                              )}
+                              {task.checklists && task.checklists.length > 0 && (
+                                <span className="text-sm text-gray-400">
+                                  ✓ {calculateChecklistProgress(task)}% complete
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -360,6 +484,142 @@ export default function LaunchDetail() {
           </div>
         )}
       </div>
+
+      {/* Task Detail Modal */}
+      {selectedTask && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setSelectedTask(null)}
+        >
+          <div 
+            className="relative bg-gradient-to-br from-slate-900 to-blue-900 border border-white/20 rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Glow effect */}
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 rounded-3xl blur-2xl"></div>
+            
+            {/* Modal Header */}
+            <div className="relative border-b border-white/10 p-6 bg-gradient-to-r from-blue-500/5 to-purple-500/5">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h2 className="text-3xl font-bold text-white mb-2">{selectedTask.name}</h2>
+                  <p className="text-gray-400 text-sm">In list: {getTaskSection(selectedTask.id)?.name}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedTask(null)}
+                  className="flex items-center justify-center w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all"
+                >
+                  <span className="text-xl">×</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="relative overflow-y-auto max-h-[calc(90vh-120px)] p-6 custom-scrollbar">
+              {/* Description */}
+              {selectedTask.description && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-bold text-gray-400 mb-2 uppercase tracking-wider">Description</h3>
+                  <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4">
+                    <p className="text-white leading-relaxed">{selectedTask.description}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Checklists */}
+              {selectedTask.checklists && selectedTask.checklists.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-bold text-gray-400 mb-3 uppercase tracking-wider">Checklist</h3>
+                  <div className="space-y-4">
+                    {selectedTask.checklists.map((checklist, checklistIdx) => {
+                      const totalItems = checklist.items?.length || 0;
+                      const completedItems = checklist.items?.filter(i => i.completed).length || 0;
+                      const checklistProgress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+                      
+                      return (
+                        <div key={checklistIdx} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="font-bold text-white">{checklist.name}</h4>
+                            <span className="text-sm font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                              {checklistProgress}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-white/5 rounded-full h-2 mb-4 overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-300"
+                              style={{ width: `${checklistProgress}%` }}
+                            ></div>
+                          </div>
+                          <div className="space-y-2">
+                            {checklist.items?.map((item, itemIdx) => (
+                              <div key={itemIdx} className="flex items-center gap-3 group hover:bg-white/5 rounded-lg p-2 transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={item.completed}
+                                  onChange={() => {
+                                    const sectionId = getTaskSection(selectedTask.id)?.id;
+                                    if (sectionId) toggleChecklistItem(sectionId, selectedTask.id, checklistIdx, itemIdx);
+                                  }}
+                                  className="w-5 h-5 rounded-md border-2 border-white/20 bg-white/5 checked:bg-gradient-to-r checked:from-blue-500 checked:to-purple-500 cursor-pointer"
+                                />
+                                <span className={`text-sm ${item.completed ? 'line-through text-gray-500' : 'text-white'}`}>
+                                  {item.name}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Trello Link */}
+              {selectedTask.url && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-bold text-gray-400 mb-3 uppercase tracking-wider">Links</h3>
+                  <a
+                    href={selectedTask.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 hover:from-blue-500/20 hover:to-purple-500/20 border border-blue-500/30 hover:border-blue-500/50 rounded-xl p-4 transition-all group"
+                  >
+                    <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-blue-500/20 group-hover:bg-blue-500/30 transition-colors">
+                      <span className="text-xl">🔗</span>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-white">View in Trello</div>
+                      <div className="text-sm text-gray-400">Open original card</div>
+                    </div>
+                    <div className="ml-auto">
+                      <span className="text-gray-400 group-hover:text-white transition-colors">→</span>
+                    </div>
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="relative border-t border-white/10 p-6 bg-gradient-to-r from-blue-500/5 to-purple-500/5">
+              <button
+                onClick={() => {
+                  const sectionId = getTaskSection(selectedTask.id)?.id;
+                  if (sectionId) toggleTaskComplete(sectionId, selectedTask.id);
+                  setSelectedTask(null);
+                }}
+                className={`w-full py-3 rounded-xl font-semibold transition-all ${
+                  selectedTask.status === 'completed'
+                    ? 'bg-gradient-to-r from-gray-500/20 to-gray-600/20 text-gray-300 border border-gray-500/30 hover:from-gray-500/30 hover:to-gray-600/30'
+                    : 'bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-300 border border-green-500/30 hover:from-green-500/30 hover:to-emerald-500/30 shadow-lg shadow-green-500/20'
+                }`}
+              >
+                {selectedTask.status === 'completed' ? '✓ Mark Incomplete' : '✓ Mark Complete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
         .custom-scrollbar::-webkit-scrollbar {
