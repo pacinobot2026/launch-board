@@ -88,6 +88,17 @@ export default function Home() {
               <div className="text-sm text-gray-400 mt-1">Total Tasks</div>
             </div>
           </div>
+
+          {/* New from Template Button */}
+          <div className="mt-8">
+            <Link href="/templates">
+              <div className="group inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-xl font-semibold text-lg transition-all shadow-xl hover:shadow-2xl hover:scale-105 cursor-pointer">
+                <span className="text-2xl group-hover:scale-125 transition-transform">✨</span>
+                <span>New from Template</span>
+                <span className="text-sm opacity-75">→</span>
+              </div>
+            </Link>
+          </div>
         </header>
 
         {/* Launch Cards */}
